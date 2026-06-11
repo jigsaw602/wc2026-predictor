@@ -50,7 +50,7 @@ def load_static_data(filename):
         return pd.read_csv(filename, keep_default_na=False, na_values=[''])
     
     # ONLINE DEPLOYMENT FALLBACK
-    GITHUB_RAW_ROOT = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/"
+    GITHUB_RAW_ROOT = "https://raw.githubusercontent.com/jigsaw602/wc2026-predictor/refs/heads/main/config.csv"
     try:
         return pd.read_csv(f"{GITHUB_RAW_ROOT}{filename}", keep_default_na=False, na_values=[''])
     except Exception:
