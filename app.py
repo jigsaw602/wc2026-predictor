@@ -2,18 +2,28 @@ import streamlit as st
 import pandas as pd
 import json
 import os
+import requests
 from datetime import datetime
 
 # Set up page configuration
 st.set_page_config(page_title="FIFA WC 2026 Predictor", page_icon="⚽", layout="centered")
 
-# --- FILE-BASED IMMUTABLE DATABASE CONFIGURATION ---
+# --- HYBRID DATABASE CONFIGURATION (Local file vs Cloud Secrets Engine) ---
 DB_FILE = "db.json"
 
-# Helper function to read from our local JSON file layer safely
-def fetch_local_db():
+def fetch_database():
+    # CLOUD DEPLOYMENT CONTEXT: Direct fallback to Streamlit Cloud Secrets Manager
+    if "database_state" in st.secrets:
+        try:
+            data = json.loads(st.secrets["database_state"]["payload"])
+            if "users" not in data: data["users"] = {}
+            if "predictions" not in data: data["predictions"] = []
+            return data
+        except Exception:
+            pass
+
+    # LOCAL DEV CONTEXT: Fallback to your local Mac db.json file
     if not os.path.exists(DB_FILE):
-        # Create a fresh file with empty containers if it doesn't exist yet
         initial_structure = {"users": {}, "predictions": []}
         with open(DB_FILE, "w") as f:
             json.dump(initial_structure, f, indent=4)
@@ -22,7 +32,6 @@ def fetch_local_db():
     try:
         with open(DB_FILE, "r") as f:
             data = json.load(f)
-            # Guarantee internal structure integrity
             if "users" not in data: data["users"] = {}
             if "predictions" not in data: data["predictions"] = []
             return data
@@ -30,34 +39,46 @@ def fetch_local_db():
         return {"users": {}, "predictions": []}
 
 def db_get(key, default_value):
-    db = fetch_local_db()
+    # Check if a session memory override exists to handle instant UI refreshes online
+    if f"cloud_{key}" in st.session_state:
+        return st.session_state[f"cloud_{key}"]
+    
+    db = fetch_database()
     return db.get(key, default_value)
 
 def db_set(key, value):
+    # Maintain state inside session cache for instant local context tracking
+    st.session_state[f"cloud_{key}"] = value
+    
+    # 1. Update Local File Build if running on your Mac
+    db = fetch_database()
+    db[key] = value
     try:
-        db = fetch_local_db()
-        db[key] = value
         with open(DB_FILE, "w") as f:
             json.dump(db, f, indent=4)
-        return True
-    except Exception as e:
-        st.error(f"❌ Local storage write error: {e}")
-        return False
+    except Exception:
+        pass
+        
+    # 2. If running online, print out the backup JSON string for easy admin copy-pasting
+    if "database_state" in st.secrets:
+        st.info("💡 **Live Database Update Generated!** Copy the text block from the Admin Panel below into your Streamlit Secrets setting to keep records saved permanently.")
+    return True
 
-# --- SAFE FILE LOADER ---
+# --- STATIC FILE LOADER (Local Files vs Live GitHub Raw Streams) ---
 def load_static_data(filename):
     if os.path.exists(filename):
         return pd.read_csv(filename, keep_default_na=False, na_values=[''])
     
-    # ONLINE DEPLOYMENT FALLBACK
-    GITHUB_RAW_ROOT = "https://raw.githubusercontent.com/jigsaw602/wc2026-predictor/refs/heads/main/config.csv"
+    # ONLINE DEPLOYMENT ENGINE: Fetches directly from your raw GitHub repo stream
+    # Ensure you replace 'your-username' and 'your-repo' with your actual GitHub parameters!
+    GITHUB_RAW_ROOT = "https://raw.githubusercontent.com/jigsaw602/wc2026-predictor/main/"
     try:
         return pd.read_csv(f"{GITHUB_RAW_ROOT}{filename}", keep_default_na=False, na_values=[''])
     except Exception:
-        st.error(f"❌ Could not locate or read data file: '{filename}'")
+        st.error(f"❌ Could not locate or read raw static file asset stream: '{filename}'")
         st.stop()
 
-# Load Static Assets from CSVs
+# Load Static Assets
 df_config = load_static_data("config.csv")
 active_matchday = str(df_config.iloc[0]["Active_Matchday"]).strip()
 deadline_str = str(df_config.iloc[0]["Deadline"]).strip()
@@ -120,7 +141,7 @@ with tab1:
                     st.success("Logged in successfully!")
                     st.rerun()
                 else:
-                    st.error("❌ Invalid Username or Password. Did you sign up the account first?")
+                    st.error("❌ Invalid Username or Password.")
     else:
         st.subheader(f"Welcome back, {st.session_state.logged_in_user.capitalize()}! 👋")
         if st.button("Log Out"):
@@ -176,7 +197,7 @@ with tab1:
                         st.rerun()
 
 # -------------------------------------------------------------------
-# TAB 2: LIVE LEADERBOARD MATRIX CALCULATIONS
+# TAB 2: LIVE LEADERBOARD MATRIX CALCULATIONS & ADMIN RAW EXPORT
 # -------------------------------------------------------------------
 with tab2:
     st.header("Tournament Leaderboard")
@@ -198,3 +219,14 @@ with tab2:
             st.dataframe(leaderboard, use_container_width=True)
         else:
             st.info("No predictions submitted yet.")
+
+    # --- IMMUTABLE BACKUP DATA EXPORT AREA ---
+    if "database_state" in st.secrets or st.session_state.logged_in_user is not None:
+        st.write("---")
+        with st.expander("⚙️ Admin Database Backup Panel"):
+            st.write("If users register or save predictions, copy this unified text payload block into your Streamlit Advanced Settings panel to save them permanently:")
+            
+            current_full_db = {"users": db_get("users", {}), "predictions": db_get("predictions", [])}
+            minified_json_string = json.dumps(current_full_db)
+            
+            st.code(f'[database_state]\npayload = \'{minified_json_string}\'')
