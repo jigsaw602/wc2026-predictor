@@ -1,0 +1,32 @@
+{
+    "users": {
+        "sinha1": "sinha1",
+        "sinha2": "sinha2"
+    },
+    "predictions": [
+        {
+            "User": "sinha1",
+            "Match ID": 3,
+            "Pred A": 1,
+            "Pred B": 0
+        },
+        {
+            "User": "sinha1",
+            "Match ID": 4,
+            "Pred A": 0,
+            "Pred B": 1
+        },
+        {
+            "User": "sinha2",
+            "Match ID": 3,
+            "Pred A": 0,
+            "Pred B": 0
+        },
+        {
+            "User": "sinha2",
+            "Match ID": 4,
+            "Pred A": 0,
+            "Pred B": 0
+        }
+    ]
+}
